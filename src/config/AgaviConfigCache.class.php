@@ -191,7 +191,7 @@ class AgaviConfigCache
 			try {
 				$data = $handler->execute($doc);
 			} catch(AgaviException $e) {
-				throw new $e(sprintf("Compilation of configuration file '%s' failed for the following reason(s):\n\n%s", $config, $e->getMessage()), 0, $e);
+				throw new $e(sprintf("Compilation of configuration file '%s' failed for the following reason(s):\n\n%s", $config, $e->getMessage()));
 			}
 		} else {
 			$validationFile = null;
@@ -298,7 +298,7 @@ class AgaviConfigCache
 		$cacheName = sprintf(
 			'%1$s_%2$s.php',
 			preg_replace(
-				'/[^\w-_.]/i', 
+				'/[^\w\-_.]/i', // escaped hypthen for compataibility with stricter requirements in newer php version.
 				'_', 
 				sprintf(
 					'%1$s_%2$s_%3$s', 
@@ -401,13 +401,22 @@ class AgaviConfigCache
 			require_once($agaviDir . '/config/util/dom/AgaviXmlConfigDomProcessingInstruction.class.php');
 			require_once($agaviDir . '/config/util/dom/AgaviXmlConfigDomText.class.php');
 			// schematron processor
-			require_once($agaviDir . '/util/AgaviSchematronProcessor.class.php');
+			require_once($agaviDir . '/config/util/schematron/AgaviXmlConfigSchematronProcessor.class.php');
 			// extended XSL* classes
 			if(!AgaviConfig::get('core.skip_config_transformations', false)) {
 				if(!extension_loaded('xsl')) {
 					throw new AgaviConfigurationException("You do not have the XSL extension for PHP (ext/xsl) installed or enabled. The extension is used by Agavi to perform XSL transformations in the configuration system to guarantee forwards compatibility of applications.\n\nIf you do not want to or can not install ext/xsl, you may disable all transformations by setting\nAgaviConfig::set('core.skip_config_transformations', true);\nbefore calling\nAgavi::bootstrap();\nin index.php (app/config.php is not the right place for this because this is a setting that's specific to your environment or machine).\n\nKeep in mind that disabling transformations mean you *have* to use the latest configuration file formats and namespace versions. Also, certain additional configuration file validations implemented via Schematron will not be performed.");
 				}
-				require($agaviDir . '/util/AgaviXsltProcessor.class.php');
+				// kill a bunch of kittens thanks to http://trac.agavi.org/ticket/1038...
+				$hopeless = version_compare(PHP_VERSION, '5.2.9', '<');
+				if($hopeless) {
+					$crapfest = error_reporting(error_reporting() & ~E_STRICT);
+				}
+				require($agaviDir . '/config/util/xsl/AgaviXmlConfigXsltProcessor.class.php');
+				if($hopeless) {
+					// ... and resurrect them (breathe, kitty, breathe, damnit!)
+					error_reporting($crapfest);
+				}
 			}
 			self::$filesIncluded = true;
 		}
@@ -419,9 +428,6 @@ class AgaviConfigCache
 			),
 			'transformations' => array(
 				AgaviXmlConfigParser::STAGE_SINGLE => array(
-					// 0.11 -> 1.0
-					$agaviDir . '/config/xsl/config_handlers.xsl',
-					// 1.0 -> 1.0 with AgaviReturnArrayConfigHandler <transformation> for Agavi 1.1
 					$agaviDir . '/config/xsl/config_handlers.xsl',
 				),
 				AgaviXmlConfigParser::STAGE_COMPILATION => array(
